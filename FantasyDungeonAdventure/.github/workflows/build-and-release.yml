@@ -1,0 +1,210 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 19
+      uses: actions/setup-java@v4
+      with:
+        java-version: '19'
+        distribution: 'temurin'
+        
+    - name: Cache Maven packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+        
+    - name: Build with Maven
+      run: mvn clean compile package -DskipTests
+        
+    - name: Create simple run script (Windows)
+      run: |
+        cat > run-game.bat << 'EOF'
+        @echo off
+        echo Starting Fantasy Dungeon Adventure...
+        java -jar fantasy-dungeon-adventure-1.0-SNAPSHOT-standalone.jar
+        if %errorlevel% neq 0 (
+            echo.
+            echo Error: Java 19+ is required to run this game.
+            echo Please install Java 19 or higher from: https://adoptium.net/
+            pause
+        )
+        EOF
+        
+    - name: Create simple run script (Unix)
+      run: |
+        cat > run-game.sh << 'EOF'
+        #!/bin/bash
+        echo "Starting Fantasy Dungeon Adventure..."
+        java -jar fantasy-dungeon-adventure-1.0-SNAPSHOT-standalone.jar
+        if [ $? -ne 0 ]; then
+            echo ""
+            echo "Error: Java 19+ is required to run this game."
+            echo "Please install Java 19 or higher from: https://adoptium.net/"
+            read -p "Press any key to continue..."
+        fi
+        EOF
+        chmod +x run-game.sh
+        
+    - name: Get tag name
+      id: get_tag
+      run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_tag.outputs.TAG_NAME }}
+        release_name: Fantasy Dungeon Adventure ${{ steps.get_tag.outputs.TAG_NAME }}
+        body: |
+          🎮 **Fantasy Dungeon Adventure ${{ steps.get_tag.outputs.TAG_NAME }}**
+          
+          A text-based dungeon crawler game showcasing enterprise Java development patterns.
+          
+          ## 🚀 Quick Start
+          
+          **Requirements:** Java 19 or higher ([Download here](https://adoptium.net/))
+          
+          **Windows Users:**
+          1. Download `fantasy-dungeon-adventure-windows.zip`
+          2. Extract the zip file
+          3. Double-click `run-game.bat`
+          
+          **Mac/Linux Users:**
+          1. Download `fantasy-dungeon-adventure-unix.tar.gz`
+          2. Extract the archive
+          3. Run `./run-game.sh` in terminal
+          
+          **Manual Run:**
+          ```bash
+          java -jar fantasy-dungeon-adventure-1.0-SNAPSHOT-standalone.jar
+          ```
+          
+          ## 🎯 Game Features
+          - Multiple difficulty levels (Easy, Normal, Hard)
+          - Procedural dungeon generation
+          - Save/load functionality
+          - Interactive puzzles and items
+          - Real-time map visualization
+          - Event-driven architecture
+          
+          ## 🔧 For Developers
+          - Enterprise Java patterns demonstration
+          - Design patterns showcase (Singleton, Factory, Observer)
+          - Comprehensive documentation and case study
+          - Clean architecture with separation of concerns
+        draft: false
+        prerelease: false
+        
+    - name: Create Windows package
+      run: |
+        mkdir -p release-windows
+        cp target/fantasy-dungeon-adventure-1.0-SNAPSHOT-standalone.jar release-windows/
+        cp run-game.bat release-windows/
+        cat > release-windows/README.txt << 'EOF'
+        Fantasy Dungeon Adventure - Windows Package
+        
+        Requirements: Java 19 or higher
+        Download Java from: https://adoptium.net/
+        
+        To play: Double-click run-game.bat
+        
+        Manual run: java -jar fantasy-dungeon-adventure-1.0-SNAPSHOT-standalone.jar
+        
+        Game Features:
+        - Multiple difficulty levels
+        - Procedural dungeon generation  
+        - Save/load functionality
+        - Interactive puzzles and combat
+        - Real-time map visualization
+        
+        Commands:
+        - Use arrow directions: north, south, east, west (or n, s, e, w)
+        - look - examine surroundings
+        - pickup [item] - collect items
+        - inventory - check your items
+        - use [item] - use items
+        - solve - attempt puzzles
+        - save/load - game progress
+        - help - show all commands
+        EOF
+        zip -r fantasy-dungeon-adventure-windows.zip release-windows/
+        
+    - name: Create Unix package  
+      run: |
+        mkdir -p release-unix
+        cp target/fantasy-dungeon-adventure-1.0-SNAPSHOT-standalone.jar release-unix/
+        cp run-game.sh release-unix/
+        cat > release-unix/README.txt << 'EOF'
+        Fantasy Dungeon Adventure - Mac/Linux Package
+        
+        Requirements: Java 19 or higher
+        Download Java from: https://adoptium.net/
+        
+        To play: Run ./run-game.sh in terminal
+        
+        Manual run: java -jar fantasy-dungeon-adventure-1.0-SNAPSHOT-standalone.jar
+        
+        Game Features:
+        - Multiple difficulty levels
+        - Procedural dungeon generation
+        - Save/load functionality
+        - Interactive puzzles and combat
+        - Real-time map visualization
+        
+        Commands:
+        - Use arrow directions: north, south, east, west (or n, s, e, w)
+        - look - examine surroundings
+        - pickup [item] - collect items
+        - inventory - check your items
+        - use [item] - use items
+        - solve - attempt puzzles
+        - save/load - game progress
+        - help - show all commands
+        EOF
+        tar -czf fantasy-dungeon-adventure-unix.tar.gz release-unix/
+        
+    - name: Upload Windows Package
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./fantasy-dungeon-adventure-windows.zip
+        asset_name: fantasy-dungeon-adventure-windows.zip
+        asset_content_type: application/zip
+        
+    - name: Upload Unix Package
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./fantasy-dungeon-adventure-unix.tar.gz
+        asset_name: fantasy-dungeon-adventure-unix.tar.gz
+        asset_content_type: application/gzip
+        
+    - name: Upload Standalone JAR
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./target/fantasy-dungeon-adventure-1.0-SNAPSHOT-standalone.jar
+        asset_name: fantasy-dungeon-adventure-standalone.jar
+        asset_content_type: application/java-archive 
